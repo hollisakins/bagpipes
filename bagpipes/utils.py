@@ -72,4 +72,5 @@ ldist_at_z = cosmo.luminosity_distance(z_array).value
 
 install_dir = os.path.dirname(os.path.realpath(__file__))
 grid_dir = install_dir + "/models/grids"
+filter_dir = install_dir + '/filters/'
 working_dir = os.getcwd()
