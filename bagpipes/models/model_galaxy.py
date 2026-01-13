@@ -418,26 +418,14 @@ class model_galaxy(object):
         internal full spectrum. """
 
         t_bc = 0.01
-        fesc = 0.0
-
         if "t_bc" in list(model_comp):
             t_bc = model_comp["t_bc"]
 
         spectrum_bc, spectrum = self.stellar.spectrum(self.sfh.ceh.grid, t_bc)
         em_lines = np.zeros(config.line_wavs.shape)
 
-        # keep a copy of original BC spectrum for later (i.e., fesc=100%)
-        spectrum_bc_f100 = np.copy(spectrum_bc)
-
         if self.nebular:
             grid = np.copy(self.sfh.ceh.grid)
-
-            # adding picket fence fesc
-            if "fesc" in list(model_comp["nebular"]):
-                fesc = model_comp["nebular"]["fesc"]
-
-                if not (0.0 <= fesc <= 1.0):
-                    raise ValueError("fesc must be between 0 and 1.")
 
             if "metallicity" in list(model_comp["nebular"]):
                 nebular_metallicity = model_comp["nebular"]["metallicity"]
@@ -449,12 +437,19 @@ class model_galaxy(object):
                 self.neb_sfh.update(neb_comp)
                 grid = self.neb_sfh.ceh.grid
 
-            em_lines += self.nebular.line_fluxes(grid, t_bc,
-                                                 model_comp["nebular"]["logU"])
+            # Get fesc (escape fraction), default to 0
+            if "fesc" not in list(model_comp['nebular']):
+                model_comp['nebular']["fesc"] = 0
+            fesc = model_comp['nebular']["fesc"]
 
-            spectrum_bc[self.wavelengths < 912.] *= 0.0
+            # Apply fesc to emission lines
+            em_lines += self.nebular.line_fluxes(grid, t_bc,
+                                                 model_comp["nebular"]["logU"]) * (1 - fesc)
+
+            # Ionizing photons: fesc fraction escapes, rest goes into nebular
+            spectrum_bc[self.wavelengths < 912.] = spectrum_bc[self.wavelengths < 912.] * fesc
             spectrum_bc += self.nebular.spectrum(grid, t_bc,
-                                                 model_comp["nebular"]["logU"])
+                                                 model_comp["nebular"]["logU"]) * (1 - fesc)
 
         # Add attenuation due to stellar birth clouds.
         if self.dust_atten:
@@ -472,24 +467,13 @@ class model_galaxy(object):
 
                 spectrum_bc_dust = spectrum_bc*bc_trans_red
                 dust_flux += np.trapz(spectrum_bc - spectrum_bc_dust,
-                                      x=self.wavelengths) * (1.0 - fesc)
+                                      x=self.wavelengths)
 
                 spectrum_bc = spectrum_bc_dust
 
             # Attenuate emission line fluxes.
-            if self.dust_atten.type == "VW07":
-                Av = model_comp["dust_atten"]["Av"]
-                # Apply birth cloud attenuation first
-                em_lines *= 10**(-bc_Av_reduced*self.dust_atten.A_line_bc/2.5)
-                # Then apply general ISM attenuation
-                em_lines *= 10**(-Av*self.dust_atten.A_line_ism/2.5)
-
-            else:
-                bc_Av = eta*model_comp["dust_atten"]["Av"]
-                em_lines *= 10**(-bc_Av*self.dust_atten.A_line/2.5)
-
-        # Track fesc on line fluxes before (potentially) adding diff dust
-        em_lines = em_lines * (1.0 - fesc)
+            bc_Av = eta*model_comp["dust_atten"]["Av"]
+            em_lines *= 10**(-bc_Av*self.dust_atten.A_line/2.5)
 
         # Add birth cloud spectrum to older stellar spectrum
         spectrum += spectrum_bc
