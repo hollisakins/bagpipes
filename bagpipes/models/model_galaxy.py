@@ -27,6 +27,46 @@ class model_galaxy(object):
     """ Builds model galaxy spectra and calculates predictions for
     spectroscopic and photometric observables.
 
+    BREAKING CHANGES
+    ----------------
+    The model component naming has changed:
+
+    OLD (upstream bagpipes):
+        model_components = {
+            'dust': {
+                'type': 'Calzetti',
+                'Av': 0.5,
+                'qpah': 2.0,  # dust emission params in 'dust' dict
+                'umin': 1.0,
+                'gamma': 0.01,
+            }
+        }
+
+    NEW (this version):
+        model_components = {
+            'dust_atten': {  # Renamed from 'dust'
+                'type': 'Calzetti',
+                'Av': 0.5,
+            },
+            'dust_emission': {  # Separate component
+                'type': 'DL07',  # or 'DC22'
+                'qpah': 2.0,
+                'umin': 1.0,
+                'gamma': 0.01,
+            }
+        }
+
+    AGN dust attenuation is now specified within the 'agn' component:
+        model_components = {
+            'agn': {
+                'type': 'carnall',
+                ...
+                'dust_type': 'Calzetti',  # or 'Salim', 'plaw', etc.
+                'dust_Av': 0.5,
+                'logfscat': -2.0,  # scattered light fraction
+            }
+        }
+
     Parameters
     ----------
 
@@ -90,8 +130,8 @@ class model_galaxy(object):
             self.filter_set.resample_filter_curves(self.wavelengths)
 
         # Set up a filter_set for calculating rest-frame UVJ magnitudes.
-        uvj_filt_list = np.loadtxt(utils.install_dir
-                                   + "/filters/UVJ.filt_list", dtype="str")
+        uvj_filt_list = np.loadtxt(utils.filter_dir
+                                   + "/UVJ.filt_list", dtype="str")
 
         self.uvj_filter_set = filters.filter_set(uvj_filt_list)
         self.uvj_filter_set.resample_filter_curves(self.wavelengths)
@@ -102,7 +142,6 @@ class model_galaxy(object):
         self.igm = igm(self.wavelengths)
         self.nebular = False
         self.dust_atten = False
-        self.agn_dust_atten = False
         self.dust_emission = False
         self.agn = False
 
@@ -116,17 +155,43 @@ class model_galaxy(object):
             if "metallicity" in list(model_components["nebular"]):
                 self.neb_sfh = star_formation_history(model_components)
 
-        if "dust" in list(model_components):
-            self.dust_emission = dust_emission(self.wavelengths)
+        # Dust emission: separate component with new API
+        if "dust_emission" in list(model_components):
+            self.dust_emission = dust_emission(self.wavelengths,
+                                               model_components['redshift'],
+                                               model_components["dust_emission"])
+
+        # Dust attenuation: renamed from 'dust' to 'dust_atten'
+        if "dust_atten" in list(model_components):
             self.dust_atten = dust_attenuation(self.wavelengths,
-                                               model_components["dust"])
+                                               model_components["dust_atten"])
 
-        if "agn_dust" in list(model_components):
-            self.agn_dust_atten = dust_attenuation(self.wavelengths,
-                                                   model_components["agn_dust"])
-
+        # AGN: pass param dict to constructor (new API)
         if "agn" in list(model_components):
-            self.agn = agn(self.wavelengths)
+            self.agn = agn(self.wavelengths, model_components["agn"])
+            self.agn_dust_atten = None
+            # AGN dust attenuation is specified within the 'agn' component
+            if "dust_type" in list(model_components["agn"]):
+                if model_components['agn']['dust_type'] == 'Salim':
+                    agn_dust_model_components = {
+                        'type': model_components["agn"]['dust_type'],
+                        'Av': model_components["agn"]['dust_Av'],
+                        'delta': model_components["agn"]['dust_delta'],
+                        'B': model_components["agn"]['dust_B']
+                    }
+                elif model_components['agn']['dust_type'] == 'plaw':
+                    agn_dust_model_components = {
+                        'type': model_components["agn"]['dust_type'],
+                        'Av': model_components["agn"]['dust_Av'],
+                        'n': model_components["agn"]['dust_n']
+                    }
+                else:
+                    agn_dust_model_components = {
+                        'type': model_components["agn"]['dust_type'],
+                        'Av': model_components["agn"]['dust_Av']
+                    }
+                self.agn_dust_atten = dust_attenuation(self.wavelengths,
+                                                       agn_dust_model_components)
 
         self.update(model_components)
 
@@ -235,6 +300,10 @@ class model_galaxy(object):
 
             R_curve[:, 1] *= chebval(x, coefs)
 
+        # Apply f_LSF scaling factor if specified
+        if "f_LSF" in list(self.model_comp):
+            R_curve[:, 1] *= self.model_comp['f_LSF']
+
         x = [0.95*self.spec_wavs[0]]
 
         while x[-1] < 1.05*self.spec_wavs[-1]:
@@ -286,9 +355,29 @@ class model_galaxy(object):
         self.model_comp = model_components
         self.sfh.update(model_components)
         if self.dust_atten:
-            self.dust_atten.update(model_components["dust"])
-        if self.agn_dust_atten:
-            self.agn_dust_atten.update(model_components["agn_dust"])
+            self.dust_atten.update(model_components["dust_atten"])
+        if self.agn:
+            self.agn.update(model_components["agn"])
+            if self.agn_dust_atten:
+                if model_components['agn']['dust_type'] == 'Salim':
+                    agn_dust_model_components = {
+                        'type': model_components["agn"]['dust_type'],
+                        'Av': model_components["agn"]['dust_Av'],
+                        'delta': model_components["agn"]['dust_delta'],
+                        'B': model_components["agn"]['dust_B']
+                    }
+                elif model_components['agn']['dust_type'] == 'plaw':
+                    agn_dust_model_components = {
+                        'type': model_components["agn"]['dust_type'],
+                        'Av': model_components["agn"]['dust_Av'],
+                        'n': model_components["agn"]['dust_n']
+                    }
+                else:
+                    agn_dust_model_components = {
+                        'type': model_components["agn"]['dust_type'],
+                        'Av': model_components["agn"]['dust_Av']
+                    }
+                self.agn_dust_atten.update(agn_dust_model_components)
 
         # If the SFH is unphysical do not caclulate the full spectrum
         if self.sfh.unphysical:
@@ -304,25 +393,6 @@ class model_galaxy(object):
 
         if self.spec_wavs is not None:
             self._calculate_spectrum(model_components)
-
-        # Add any AGN component:
-        if self.agn:
-            self.agn.update(self.model_comp["agn"])
-            agn_spec = self.agn.spectrum
-            agn_spec *= self.igm.trans(self.model_comp["redshift"])
-
-            if self.agn_dust_atten:
-                agn_trans = 10**(-self.model_comp["agn_dust"]["Av"]*self.agn_dust_atten.A_cont/2.5)
-                agn_spec *= agn_trans
-
-            self.spectrum_full += agn_spec/(1. + self.model_comp["redshift"])
-
-            if self.spec_wavs is not None:
-                zplus1 = (self.model_comp["redshift"] + 1.)
-                agn_interp = np.interp(self.spec_wavs, self.wavelengths*zplus1,
-                                       agn_spec/zplus1, left=0, right=0)
-
-                self.spectrum[:, 1] += agn_interp
 
         if self.filt_list is not None:
             self._calculate_photometry(model_components["redshift"])
@@ -392,9 +462,9 @@ class model_galaxy(object):
 
             # Add extra attenuation to birth clouds.
             eta = 1.
-            if "eta" in list(model_comp["dust"]):
-                eta = model_comp["dust"]["eta"]
-                bc_Av_reduced = (eta - 1.)*model_comp["dust"]["Av"]
+            if "eta" in list(model_comp["dust_atten"]):
+                eta = model_comp["dust_atten"]["eta"]
+                bc_Av_reduced = (eta - 1.)*model_comp["dust_atten"]["Av"]
                 if self.dust_atten.type == "VW07":
                     bc_trans_red = 10**(-bc_Av_reduced*self.dust_atten.A_cont_bc/2.5)
                 else:
@@ -408,53 +478,62 @@ class model_galaxy(object):
 
             # Attenuate emission line fluxes.
             if self.dust_atten.type == "VW07":
-                Av = model_comp["dust"]["Av"]
+                Av = model_comp["dust_atten"]["Av"]
                 # Apply birth cloud attenuation first
                 em_lines *= 10**(-bc_Av_reduced*self.dust_atten.A_line_bc/2.5)
                 # Then apply general ISM attenuation
                 em_lines *= 10**(-Av*self.dust_atten.A_line_ism/2.5)
 
             else:
-                bc_Av = eta*model_comp["dust"]["Av"]
+                bc_Av = eta*model_comp["dust_atten"]["Av"]
                 em_lines *= 10**(-bc_Av*self.dust_atten.A_line/2.5)
 
         # Track fesc on line fluxes before (potentially) adding diff dust
         em_lines = em_lines * (1.0 - fesc)
 
+        # Add birth cloud spectrum to older stellar spectrum
+        spectrum += spectrum_bc
+
         # Add attenuation due to the diffuse ISM.
         if self.dust_atten:
-            trans = 10**(-model_comp["dust"]["Av"]*self.dust_atten.A_cont/2.5)
+            trans = 10**(-model_comp["dust_atten"]["Av"]*self.dust_atten.A_cont/2.5)
             dust_spectrum = spectrum*trans
             dust_spectrum_bc = spectrum_bc*trans
 
             dust_flux += np.trapz(spectrum - dust_spectrum, x=self.wavelengths)
-            dust_flux += np.trapz(spectrum_bc - dust_spectrum_bc,
-                                  x=self.wavelengths) * (1.0 - fesc)
 
-            spectrum = (dust_spectrum + dust_spectrum_bc*(1.0 - fesc)
-                        + spectrum_bc_f100*fesc)
+            # Add scattered light component if specified
+            if "logfscat" in list(model_comp["dust_atten"]):
+                scat = spectrum * np.power(10., model_comp["dust_atten"]["logfscat"])
+                dust_spectrum += scat
 
-            self.spectrum_bc = ((spectrum_bc*trans) * (1.0 - fesc)
-                                + spectrum_bc_f100*fesc)
+            spectrum = dust_spectrum
+            self.spectrum_bc = dust_spectrum_bc
 
-            # Add dust emission.
-            qpah, umin, gamma = 2., 1., 0.01
-            if "qpah" in list(model_comp["dust"]):
-                qpah = model_comp["dust"]["qpah"]
+        # Add dust emission if both attenuation and emission are specified
+        if self.dust_atten and self.dust_emission:
+            self.dust_spectrum = dust_flux * self.dust_emission.spectrum(
+                model_comp["dust_emission"])
+            spectrum += self.dust_spectrum
 
-            if "umin" in list(model_comp["dust"]):
-                umin = model_comp["dust"]["umin"]
-
-            if "gamma" in list(model_comp["dust"]):
-                gamma = model_comp["dust"]["gamma"]
-
-            spectrum += dust_flux*self.dust_emission.spectrum(qpah, umin,
-                                                              gamma)
-
-        else: # if no diffuse dust is added, just add birth cloud spectrum to spectrum.
-            spectrum += spectrum_bc*(1.0 - fesc) + spectrum_bc_f100*fesc
+        # Add any AGN component
+        if self.agn:
+            if self.agn_dust_atten:
+                trans = 10**(-self.model_comp["agn"]["dust_Av"]
+                             * self.agn_dust_atten.A_cont/2.5)
+                spectrum_agn = self.agn.spectrum * trans
+                # Add scattered light
+                if "logfscat" in list(self.model_comp["agn"]):
+                    spectrum_agn += (self.agn.spectrum
+                                     * np.power(10., self.model_comp["agn"]["logfscat"]))
+            else:
+                spectrum_agn = self.agn.spectrum
+            spectrum += spectrum_agn
+            self.spectrum_full_agn = spectrum_agn
 
         spectrum *= self.igm.trans(model_comp["redshift"])
+        if self.agn:
+            self.spectrum_full_agn *= self.igm.trans(model_comp["redshift"])
 
         if self.dust_atten:
             self.spectrum_bc *= self.igm.trans(model_comp["redshift"])
@@ -485,6 +564,11 @@ class model_galaxy(object):
 
         if self.dust_atten:
             self.spectrum_bc /= self.lum_flux*(1. + model_comp["redshift"])
+            if self.dust_emission:
+                self.dust_spectrum /= self.lum_flux*(1. + model_comp["redshift"])
+
+        if self.agn:
+            self.spectrum_full_agn /= self.lum_flux*(1. + model_comp['redshift'])
 
         em_lines /= self.lum_flux
 
@@ -493,6 +577,11 @@ class model_galaxy(object):
 
         if self.dust_atten:
             self.spectrum_bc *= 3.826*10**33
+            if self.dust_emission:
+                self.dust_spectrum *= 3.826*10**33
+
+        if self.agn:
+            self.spectrum_full_agn *= 3.826*10**33
 
         em_lines *= 3.826*10**33
 
@@ -533,6 +622,11 @@ class model_galaxy(object):
 
         zplusone = model_comp["redshift"] + 1.
 
+        # Initialize AGN spectrum tracking if AGN exists
+        spectrum_agn = None
+        if self.agn:
+            spectrum_agn = self.spectrum_full_agn
+
         if "veldisp" in list(model_comp):
             vres = 3*10**5/config.R_spec/2.
             sigma_pix = model_comp["veldisp"]/vres
@@ -543,6 +637,8 @@ class model_galaxy(object):
             kernel /= np.trapz(kernel)  # Explicitly normalise kernel
 
             spectrum = np.convolve(self.spectrum_full, kernel, mode="valid")
+            if self.agn:
+                spectrum_agn = np.convolve(self.spectrum_full_agn, kernel, mode="valid")
             redshifted_wavs = zplusone*self.wavelengths[k_size:-k_size]
 
         else:
@@ -556,6 +652,9 @@ class model_galaxy(object):
             # spectrum = np.interp(new_wavs, redshifted_wavs, spectrum)
             spectrum = spectres.spectres(new_wavs, redshifted_wavs,
                                          spectrum, fill=0)
+            if self.agn:
+                spectrum_agn = spectres.spectres(new_wavs, redshifted_wavs,
+                                                 spectrum_agn, fill=0)
             redshifted_wavs = new_wavs
 
             sigma_pix = oversample/2.35  # sigma width of kernel in pixels
@@ -567,6 +666,8 @@ class model_galaxy(object):
 
             # Disperse non-uniformly sampled spectrum
             spectrum = np.convolve(spectrum, kernel, mode="valid")
+            if self.agn:
+                spectrum_agn = np.convolve(spectrum_agn, kernel, mode="valid")
             redshifted_wavs = redshifted_wavs[k_size:-k_size]
 
         # Converted to using spectres in response to issue with interp,
@@ -576,11 +677,16 @@ class model_galaxy(object):
 
         fluxes = spectres.spectres(self.spec_wavs, redshifted_wavs,
                                    spectrum, fill=0)
+        if self.agn:
+            fluxes_agn = spectres.spectres(self.spec_wavs, redshifted_wavs,
+                                           spectrum_agn, fill=0)
 
         if self.spec_units == "mujy":
             fluxes /= ((10**-29*2.9979*10**18/self.spec_wavs**2))
 
         self.spectrum = np.c_[self.spec_wavs, fluxes]
+        if self.agn:
+            self.spectrum_agn = np.c_[self.spec_wavs, fluxes_agn]
 
     def _calculate_uvj_mags(self):
         """ Obtain (unnormalised) rest-frame UVJ magnitudes. """
