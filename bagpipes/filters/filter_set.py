@@ -37,7 +37,7 @@ class filter_set(object):
                 self.filt_dict[filt] = np.loadtxt(filt, usecols=(0, 1))
 
             except IOError:
-                self.filt_dict[filt] = np.loadtxt(utils.install_dir + "/"
+                self.filt_dict[filt] = np.loadtxt(utils.filter_dir + "/"
                                                   + filt, usecols=(0, 1))
 
             while self.filt_dict[filt][0, 1] == 0.:
@@ -72,6 +72,8 @@ class filter_set(object):
         """ Calculates effective wavelengths for each filter curve. """
 
         self.eff_wavs = np.zeros(len(self.filt_list))
+        self.min_wavs = np.zeros(len(self.filt_list))
+        self.max_wavs = np.zeros(len(self.filt_list))
 
         for i in range(len(self.filt_list)):
             filt = self.filt_list[i]
@@ -80,6 +82,9 @@ class filter_set(object):
             self.eff_wavs[i] = np.sqrt(np.sum(filt_weights*self.filt_dict[filt][:, 0])
                                        / np.sum(filt_weights
                                        / self.filt_dict[filt][:, 0]))
+            # Calculate min/max wavelengths at 50% of peak transmission
+            self.min_wavs[i] = np.min(self.filt_dict[filt][:, 0][self.filt_dict[filt][:, 1]/np.max(self.filt_dict[filt][:, 1]) > 0.5])
+            self.max_wavs[i] = np.max(self.filt_dict[filt][:, 0][self.filt_dict[filt][:, 1]/np.max(self.filt_dict[filt][:, 1]) > 0.5])
 
     def resample_filter_curves(self, wavelengths):
         """ Resamples the filter curves onto a new set of wavelengths
