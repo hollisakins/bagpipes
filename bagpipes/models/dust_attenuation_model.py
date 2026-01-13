@@ -44,6 +44,13 @@ class dust_attenuation(object):
             self.A_cont = self._smc_gordon(wavelengths)
             self.A_line = self._smc_gordon(config.line_wavs)
 
+        elif self.type == "QSO":
+            # QSO reddening curve from Temple et al. 2021
+            wavtmp, flxtmp = np.genfromtxt(config.qsogen_ext_curve, unpack=True)
+            R = 3.1
+            self.A_cont = (np.interp(wavelengths, wavtmp, flxtmp) + R) / R
+            self.A_line = (np.interp(config.line_wavs, wavtmp, flxtmp) + R) / R
+
         # If Salim dust is selected, pre-compute Calzetti to start from.
         elif self.type == "Salim":
             self.A_cont_calz = self._calzetti(wavelengths)
@@ -58,11 +65,11 @@ class dust_attenuation(object):
     def update(self, param):
 
         # Fixed-shape dust laws are pre-computed in __init__.
-        if self.type in ["Calzetti", "Cardelli", "SMC", "VW07"]:
+        if self.type in ["Calzetti", "Cardelli", "SMC", "QSO", "VW07"]:
             return
 
         # Variable shape dust laws have to be computed every time.
-        self.A_cont, self.A_line= getattr(self, self.type)(param)
+        self.A_cont, self.A_line = getattr(self, self.type)(param)
 
     def CF00(self, param):
         """ Modified Charlot + Fall (2000) model of Carnall et al.
@@ -70,6 +77,20 @@ class dust_attenuation(object):
         A_cont = (5500./self.wavelengths)**param["n"]
         A_line = (5500./config.line_wavs)**param["n"]
 
+        return A_cont, A_line
+
+    def plaw(self, param):
+        """Simple power-law attenuation curve.
+
+        A(lambda) = (lambda/5500)^n
+
+        Parameters
+        ----------
+        n : float
+            Power-law index (negative for typical dust reddening)
+        """
+        A_cont = (self.wavelengths/5500.)**param['n']
+        A_line = (config.line_wavs/5500.)**param['n']
         return A_cont, A_line
 
     def Salim(self, param):
