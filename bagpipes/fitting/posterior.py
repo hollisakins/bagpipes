@@ -4,6 +4,7 @@ import numpy as np
 
 import os
 import h5py
+import tqdm
 
 from copy import deepcopy
 
@@ -52,8 +53,9 @@ class posterior(object):
 
         fit_info_str = file.attrs["fit_instructions"]
         fit_info_str = fit_info_str.replace("array", "np.array")
-        fit_info_str = fit_info_str.replace("float", "np.float")
-        fit_info_str = fit_info_str.replace("np.np.", "np.")
+        fit_info_str = fit_info_str.replace("float32", "float")
+        fit_info_str = fit_info_str.replace("float64", "float")
+        fit_info_str = fit_info_str.replace("np.float", "float")
         self.fit_instructions = eval(fit_info_str)
 
         self.fitted_model = fitted_model(self.galaxy, self.fit_instructions)
@@ -164,11 +166,10 @@ class posterior(object):
         self.model_galaxy = model_galaxy(self.fitted_model.model_components,
                                          filt_list=self.galaxy.filt_list,
                                          spec_wavs=self.galaxy.spec_wavs,
-                                         index_list=self.galaxy.index_list,
-                                         spec_units=self.galaxy.out_units,
-                                         phot_units=self.galaxy.out_units)
+                                         index_list=self.galaxy.index_list)
 
-        all_names = ["photometry", "spectrum", "spectrum_full", "uvj",
+        all_names = ["photometry", "spectrum", "spectrum_agn",
+                     "spectrum_full_agn", "spectrum_full", "uvj",
                      "indices"]
 
         all_model_keys = dir(self.model_galaxy)
@@ -185,7 +186,7 @@ class posterior(object):
             size = self.model_galaxy.spectrum_full.shape[0]
             self.samples["dla_transmission"] = np.zeros((self.n_samples, size))
 
-        if "dust" in list(self.fitted_model.model_components):
+        if "dust_atten" in list(self.fitted_model.model_components):
             size = self.model_galaxy.spectrum_full.shape[0]
             self.samples["dust_curve"] = np.zeros((self.n_samples, size))
 
@@ -199,7 +200,7 @@ class posterior(object):
                 size = self.model_galaxy.spectrum.shape[0]
                 self.samples["noise"] = np.zeros((self.n_samples, size))
 
-        for i in range(self.n_samples):
+        for i in tqdm.tqdm(range(self.n_samples)):
             param = self.samples2d[self.indices[i], :]
             self.fitted_model._update_model_components(param)
             self.fitted_model.lnlike(param)
@@ -210,7 +211,7 @@ class posterior(object):
             if "dla" in list(self.fitted_model.model_components):
                 self.samples["dla_transmission"][i] = self.fitted_model.model_galaxy.dla_trans
 
-            if "dust" in list(self.fitted_model.model_components):
+            if "dust_atten" in list(self.fitted_model.model_components):
                 dust_curve = self.fitted_model.model_galaxy.dust_atten.A_cont
                 self.samples["dust_curve"][i] = dust_curve
 
@@ -223,12 +224,11 @@ class posterior(object):
                     self.samples["noise"][i] = self.fitted_model.noise.mean()
 
             for q in quantity_names:
-                if q == "spectrum":
+                if q == "spectrum" or q == "spectrum_agn":
                     spectrum = getattr(self.fitted_model.model_galaxy, q)[:, 1]
                     self.samples[q][i] = spectrum
-                    continue
-
-                self.samples[q][i] = getattr(self.fitted_model.model_galaxy, q)
+                else:
+                    self.samples[q][i] = getattr(self.fitted_model.model_galaxy, q)
 
     def predict(self, filt_list=None, spec_wavs=None, spec_units="ergscma",
                 phot_units="ergscma", index_list=None):
