@@ -152,3 +152,28 @@ class prior(object):
         value = t.ppf(value, df=df, loc=loc, scale=scale)
 
         return value
+
+    def custom(self, value, limits, hyper_params):
+        """
+        Custom prior defined by user-provided CDF.
+
+        Allows arbitrary prior distributions by specifying the CDF as arrays.
+        The prior is defined by interpolating the inverse CDF.
+
+        hyper_params:
+            x : array-like
+                Parameter values where CDF is defined
+            cdf : array-like
+                Cumulative distribution function values (0 to 1)
+
+        Example usage in fit_instructions:
+            param_prior = "custom"
+            param_prior_x = np.linspace(0, 10, 100)
+            param_prior_cdf = some_custom_cdf(param_prior_x)
+        """
+        x = hyper_params['x']
+        cdf = hyper_params['cdf']
+        uniform_max = np.interp(limits[1], x, cdf)
+        uniform_min = np.interp(limits[0], x, cdf)
+        value = (uniform_max-uniform_min)*value + uniform_min
+        return np.interp(value, cdf, x)
