@@ -1,6 +1,7 @@
 from __future__ import print_function, division, absolute_import
 
 import numpy as np
+from copy import copy, deepcopy
 
 try:
     import dense_basis as db
@@ -134,15 +135,10 @@ class star_formation_history:
             self.nsfr = np.nan
         else:
             self.ssfr = np.log10(self.sfr) - self.stellar_mass
-            self.nsfr = np.log10(self.sfr*self.age_of_universe) - self.stellar_mass
+            self.nsfr = np.log10(self.sfr*self.age_of_universe) - self.formed_mass
 
         self.mass_weighted_age = np.sum(self.sfh*self.age_widths*self.ages)
         self.mass_weighted_age /= np.sum(self.sfh*self.age_widths)
-
-        # Calculate nth percentile formation time
-        # perc = 90
-        # cum_sfh = np.cumsum(self.sfh*self.age_widths)/np.sum(self.sfh*self.age_widths)
-        # self.tform_percentile = self.ages[np.argmin(np.abs(cum_sfh - (100 - perc)/100.))]  # In years
 
         self.mass_weighted_zmet = np.sum(self.live_frac_grid*self.ceh.grid,
                                          axis=1)
@@ -348,13 +344,142 @@ class star_formation_history:
         sfr[mask] += fburst * dpl_form / sfr_burst_tot
 
     def continuity(self, sfr, param):
-        bin_edges = np.array(param["bin_edges"])[::-1]*10**6
-        n_bins = len(bin_edges) - 1
+        """
+        Continuity SFH with flexible bin specification.
+
+        NOTE: This is now an alias for continuity_hba. This is a BREAKING CHANGE
+        from the original bagpipes implementation.
+
+        Key differences from original continuity:
+
+        ORIGINAL continuity:
+            - bin_edges: ALL bin edges must be specified explicitly (in Myr)
+            - n_bins determined automatically from len(bin_edges) - 1
+            - No auto-extension; bins cover only the range you specify
+            - Example: bin_edges=[0, 10, 100, 1000] gives 3 bins
+
+        NEW continuity (via continuity_hba):
+            - bin_edges: Only RECENT bin edges specified (in Myr)
+            - n_bins: REQUIRED - total number of bins desired
+            - z_max: Optional (default=20) - redshift where SF begins
+            - Auto-extends with log-uniform bins from max(bin_edges) to z_max
+            - Example: bin_edges=[0, 10, 30, 100], n_bins=8, z_max=20
+              gives 3 specified bins + 5 auto-generated bins to z=20
+
+        Migration guide:
+            Old: {'bin_edges': [0, 10, 100, 1000]}  # 3 bins, 2 dsfr params
+            New: {'bin_edges': [0, 10, 100, 1000], 'n_bins': 3}  # equivalent
+                 OR use continuity_hba features:
+                 {'bin_edges': [0, 10, 30, 100], 'n_bins': 8, 'z_max': 20}
+        """
+        self.continuity_hba(sfr, param)
+        # Original implementation (for reference):
+        # bin_edges = np.array(param["bin_edges"])[::-1]*10**6
+        # n_bins = len(bin_edges) - 1
+        # dsfrs = [param["dsfr" + str(i)] for i in range(1, n_bins)]
+        # for i in range(1, n_bins+1):
+        #     mask = (self.ages < bin_edges[i-1]) & (self.ages > bin_edges[i])
+        #     sfr[mask] += 10**np.sum(dsfrs[:i-1])
+
+    def continuity_hba(self, sfr, param):
+        """
+        Flexible continuity SFH with automatic bin extension to high redshift.
+
+        This model allows you to specify fine time resolution for recent bins
+        while automatically generating log-uniformly spaced bins for earlier
+        cosmic times back to z_max.
+
+        Parameters (in param dict):
+        ---------------------------
+        bin_edges : array-like
+            Edges of the recent/young bins in Myr. These define the fine
+            time resolution for recent star formation.
+            Example: [0, 10, 30, 100] defines 3 bins from 0-10, 10-30, 30-100 Myr
+
+        n_bins : int
+            Total number of bins desired. Bins beyond those specified by
+            bin_edges will be log-uniformly spaced from max(bin_edges) to
+            the age of the universe at z_max.
+
+        z_max : float, optional
+            Redshift at which star formation first begins. Default is 20.
+            The oldest bin will extend to the age of the universe at this z.
+
+        dsfr1, dsfr2, ..., dsfr{n_bins-1} : float
+            Log ratio of SFR between adjacent bins. The oldest bin is the
+            reference (SFR=1 before normalization), and each dsfr_i gives
+            log10(SFR_i / SFR_{i-1}).
+
+        Example:
+        --------
+        continuity_hba = {
+            'massformed': (8, 12),
+            'metallicity': (0.001, 2.5),
+            'bin_edges': [0, 10, 30, 100],  # 3 recent bins in Myr
+            'n_bins': 8,                     # 8 total bins
+            'z_max': 20,                     # SF starts at z=20
+            'dsfr1': (-3, 3),               # 7 dsfr parameters for 8 bins
+            'dsfr2': (-3, 3),
+            # ... dsfr3 through dsfr7
+        }
+        '''
+        bin_edges = np.array(param['bin_edges']) * 1e6
+
+        n_bins_specified = len(bin_edges)-1
+        n_bins_even = param['n_bins'] - n_bins_specified
+        zmax = 20
+        if 'z_max' in param:
+            zmax = param['z_max']
+
+        universe_age_at_z = self.age_of_universe # in yr
+        universe_age_at_zmax = utils.age_at_z[np.argmin(np.abs(utils.z_array-zmax))]*1e9
+        sfh_age_max = universe_age_at_z - universe_age_at_zmax
+        bin_edges = np.append(bin_edges[:-1], np.logspace(np.log10(np.max(bin_edges)), np.log10(sfh_age_max), n_bins_even+1))
+        bin_edges = np.flip(bin_edges)
+        n_bins = len(bin_edges)-1
+
         dsfrs = [param["dsfr" + str(i)] for i in range(1, n_bins)]
 
-        for i in range(1, n_bins+1):
-            mask = (self.ages < bin_edges[i-1]) & (self.ages > bin_edges[i])
-            sfr[mask] += 10**np.sum(dsfrs[:i-1])
+        for i in range(n_bins):
+            mask = (self.ages < bin_edges[i]) & (self.ages > bin_edges[i+1])
+            sfr[mask] = 10**np.sum(dsfrs[:i])
+
+    def tcsfh(self, sfr, param):
+        '''
+        Two-component SFH model described in Ensley+24a,b.
+
+        Comprised of a delayed-tau SFH with a constant SFH in the recent past.
+
+        tcsfh = {}
+        tcsfh['massformed'] = (6, 12)
+        tcsfh['metallicity'] = (0.001, 0.5)
+        tcsfh['metallicity_prior'] = 'log_10'
+        tcsfh['delayed_age_frac']
+        tcsfh['delayed_tau']
+        tcsfh['constant_age'] # in Myr
+        tcsfh['constant_sSFR']
+
+        '''
+
+        mass_desired = 10**param["massformed"]
+
+        # Constant SFR from age_min=0 to "constant_age", normalized by sSFR
+        age_min = 0
+        age_max = param["constant_age"]*1e6
+        sSFR = param['constant_sSFR']
+        mask = (self.ages > age_min) & (self.ages <= age_max)
+        sfr[mask] += sSFR * mass_desired / 1e9
+        mass_constant = np.sum(sfr[mask] * self.age_widths[mask])
+
+        age = param["delayed_age_frac"] * self.age_of_universe
+        tau = param["delayed_tau"]*1e9
+        # mask = (self.ages > age_max) & (self.ages < age)
+        t = age - self.ages#[mask]
+        sfr_delayed = t*np.exp(-t/tau)
+        mass_delayed_norm = np.sum(sfr_delayed * self.age_widths)#[mask])
+        mass_delayed_desired = mass_desired - mass_constant
+        sfr_delayed *= mass_delayed_desired/mass_delayed_norm
+        sfr += sfr_delayed
 
     def custom(self, sfr, param):
         history = param["history"]
