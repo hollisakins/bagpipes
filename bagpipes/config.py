@@ -155,11 +155,11 @@ try:
 
     # Draine + Li (2007) dust emission grids, stored as a FITS HDUList.
     dust_grid_umin_only = [
-        fits.open(grid_dir + "/dl07_grids_umin_only.fits")[i].data for i
+        fits.open(grid_dir + "/dl07_grids_umin_only_no_norm.fits")[i].data for i
         in range(len(qpah_vals) + 1)]
 
     dust_grid_umin_umax = [
-        fits.open(grid_dir + "/dl07_grids_umin_umax.fits")[i].data for i
+        fits.open(grid_dir + "/dl07_grids_umin_umax_no_norm.fits")[i].data for i
         in range(len(qpah_vals) + 1)]
 
 except IOError:
