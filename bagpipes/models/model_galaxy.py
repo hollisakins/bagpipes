@@ -20,6 +20,9 @@ from .igm_model import igm
 from .dla_model import dla_trans
 from .agn_model import agn
 from .star_formation_history import star_formation_history
+from .powerlaw_continuum_model import powerlaw_continuum
+from .emission_line_model import emission_lines
+from .pyneb_continuum_model import pyneb_continuum
 from ..input.spectral_indices import measure_index
 
 
@@ -192,6 +195,24 @@ class model_galaxy(object):
                     }
                 self.agn_dust_atten = dust_attenuation(self.wavelengths,
                                                        agn_dust_model_components)
+
+        # Power-law continuum component
+        self.powerlaw = False
+        if "powerlaw" in list(model_components):
+            self.powerlaw = powerlaw_continuum(self.wavelengths,
+                                               model_components["powerlaw"])
+
+        # Flexible emission lines component
+        self.emission_lines = False
+        if "emission_lines" in list(model_components):
+            self.emission_lines = emission_lines(self.wavelengths,
+                                                 model_components["emission_lines"])
+
+        # PyNeb nebular continuum component
+        self.pyneb_continuum = False
+        if "pyneb_continuum" in list(model_components):
+            self.pyneb_continuum = pyneb_continuum(self.wavelengths,
+                                                   model_components["pyneb_continuum"])
 
         self.update(model_components)
 
@@ -379,6 +400,16 @@ class model_galaxy(object):
                     }
                 self.agn_dust_atten.update(agn_dust_model_components)
 
+        # Update new custom components
+        if self.powerlaw:
+            self.powerlaw.update(model_components["powerlaw"])
+
+        if self.emission_lines:
+            self.emission_lines.update(model_components["emission_lines"])
+
+        if self.pyneb_continuum:
+            self.pyneb_continuum.update(model_components["pyneb_continuum"])
+
         # If the SFH is unphysical do not caclulate the full spectrum
         if self.sfh.unphysical:
             warnings.warn("The requested model includes stars which formed "
@@ -515,6 +546,19 @@ class model_galaxy(object):
             spectrum += spectrum_agn
             self.spectrum_full_agn = spectrum_agn
 
+        # Add power-law continuum (no dust attenuation)
+        if self.powerlaw:
+            spectrum += self.powerlaw.spectrum
+
+        # Add emission lines (no dust attenuation)
+        if self.emission_lines:
+            spectrum += self.emission_lines.spectrum
+
+        # Add PyNeb nebular continuum (no dust attenuation)
+        if self.pyneb_continuum:
+            spectrum += self.pyneb_continuum.spectrum
+
+        # Apply IGM attenuation to everything
         spectrum *= self.igm.trans(model_comp["redshift"])
         if self.agn:
             self.spectrum_full_agn *= self.igm.trans(model_comp["redshift"])

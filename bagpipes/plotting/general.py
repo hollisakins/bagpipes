@@ -61,7 +61,12 @@ latex_names = {"redshift": "z",
                "scaling": "s",
                "t_bc": "t_{BC}",
                "B": "B",
-               "delta": "\delta"}
+               "delta": "\\delta",
+               "loglum": "\\mathrm{log_{10}(L",
+               "fwhm": "\\mathrm{FWHM}",
+               "velshift": "\\Delta v",
+               "logL5100": "\\mathrm{log_{10}(L_{5100}",
+               "lognorm": "\\mathrm{log_{10}(L_{norm}"}
 
 latex_units = {"metallicity": "Z_{\\odot}",
                "massformed": "M_{\\odot})}",
@@ -79,7 +84,12 @@ latex_units = {"metallicity": "Z_{\\odot}",
                "tform": "\\mathrm{Gyr}",
                "tau_q": "\\mathrm{Gyr}",
                "tquench": "\\mathrm{Gyr}",
-               "t_bc": "\\mathrm{Gyr}"}
+               "t_bc": "\\mathrm{Gyr}",
+               "loglum": "\\mathrm{erg\\ s}^{-1})}",
+               "fwhm": "\\mathrm{km\\ s}^{-1}",
+               "velshift": "\\mathrm{km\\ s}^{-1}",
+               "logL5100": "\\mathrm{erg\\ s}^{-1})}",
+               "lognorm": "\\mathrm{erg\\ s}^{-1})"}
 
 latex_comps = {"dblplaw": "dpl",
                "exponential": "exp",
@@ -215,16 +225,32 @@ def fix_param_names(fit_params):
 
         if len(split) == 1:
             comp = None
+            subcomp = None
             param = split[0]
 
-        if len(split) == 2:
+        elif len(split) == 2:
             comp = split[0]
+            subcomp = None
             param = split[1]
+
+        elif len(split) == 3:
+            # Handle 3-level nesting (e.g., emission_lines:Ha:loglum)
+            comp = split[0]
+            subcomp = split[1]
+            param = split[2]
+
+        else:
+            comp = None
+            subcomp = None
+            param = fit_param
 
         if param in list(latex_names):
             new_param = latex_names[param]
 
-            if comp is not None:
+            if subcomp is not None:
+                # For 3-level params, show subcomp (line name) as subscript
+                new_param += "_\\mathrm{" + subcomp + "}"
+            elif comp is not None:
                 if comp in list(latex_comps):
                     new_param += "_\\mathrm{" + latex_comps[comp] + "}"
                 else:

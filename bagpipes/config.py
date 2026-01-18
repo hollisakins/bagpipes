@@ -62,7 +62,7 @@ models, as well as some of their basic properties. """
 
 try:
     # Name of the fits file storing the stellar models
-    stellar_file = "bpass_2.2.1_bin_imf135_300_stellar_grids.fits"
+    stellar_file = "bpass_2.2.1_bin_imf135_300_stellar_grids.fits"#"bc03_miles_stellar_grids.fits"
 
     # The metallicities of the stellar grids in units of Z_Solar
     metallicities = np.array([10**-5, 10**-4, 0.001, 0.002, 0.003, 0.004,
@@ -82,7 +82,14 @@ try:
     # The raw stellar grids, stored as a FITS HDUList.
     # The different HDUs are the grids at different metallicities.
     # Axis 0 of each grid runs over wavelength, axis 1 over age.
-    raw_stellar_grid = fits.open(grid_dir + "/" + stellar_file)[1:14]
+    raw_stellar_grid = fits.open(grid_dir + "/" + stellar_file)[1:-3]
+
+    # Check that metallicities have been updated with the stellar file.
+    grids = fits.open(grid_dir + "/" + stellar_file)
+    if len(grids) > len(metallicities) + 4:
+        print("Warning: More grids found in " + stellar_file + " than expected."
+              + " Check that the metallicities listed in bagpipes/config.py are"
+              + " correct.")
 
     # Set up edge positions for metallicity bins for stellar models.
     metallicity_bins = make_bins(metallicities, make_rhs=True)[0]
@@ -93,24 +100,23 @@ except IOError:
     print("Failed to load stellar grids, these should be placed in"
           + " the bagpipes/models/grids/ directory.")
 
-
 """ These variables tell the code where to find the raw nebular emission
 models, as well as some of their basic properties. """
 
-try:
-    # Names of files containing the nebular grids.
-    neb_cont_file = "bpass_2.2.1_bin_imf135_300_nebular_cont_grids.fits"
-    neb_line_file = "bpass_2.2.1_bin_imf135_300_nebular_line_grids.fits"
+# LogU values for the nebular emission grids.
+logU = np.arange(-4., 0.01, 0.5)
 
+# Names of files containing the nebular grids.
+neb_cont_file = "bpass_2.2.1_bin_imf135_300_nebular_cont_grids_extended_logU_nograins_cloudy25.fits"
+neb_line_file = "bpass_2.2.1_bin_imf135_300_nebular_line_grids_extended_logU_nograins_cloudy25.fits"
+
+try:
     # Names for the emission features to be tracked.
     line_names = np.loadtxt(grid_dir + "/cloudy_lines.txt",
                             dtype="str", delimiter="}")
 
     # Wavelengths of these emission features in Angstroms.
     line_wavs = np.loadtxt(grid_dir + "/cloudy_linewavs.txt")
-
-    # LogU values for the nebular emission grids.
-    logU = np.arange(-4., -0.99, 0.5)
 
     # Ages for the nebular emission grids.
     neb_ages = fits.open(grid_dir
@@ -120,12 +126,16 @@ try:
     neb_wavs = fits.open(grid_dir + "/" + neb_cont_file)[1].data[0, 1:]
 
     # Grid of line fluxes.
-    line_grid = fits.open(grid_dir + "/" + neb_line_file)
+    line_file = fits.open(grid_dir + "/" + neb_line_file)
+    line_grid = [line_file[i].data for
+                 i in range(len(metallicities) * len(logU) + 1)]
 
     # Grid of nebular continuum fluxes.
-    cont_grid = fits.open(grid_dir + "/" + neb_cont_file)
+    cont_file = fits.open(grid_dir + "/" + neb_cont_file)
+    cont_grid = [cont_file[i].data for
+                 i in range(len(metallicities) * len(logU) + 1)]
 
-except IOError:
+except (IOError, IndexError):
     print("Failed to load nebular grids, these should be placed in the"
           + " bagpipes/models/grids/ directory.")
 

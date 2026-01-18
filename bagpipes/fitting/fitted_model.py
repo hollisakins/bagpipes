@@ -65,8 +65,15 @@ class fitted_model(object):
 
             else:
                 for sub_key in list(self.fit_instructions[key]):
-                    all_keys.append(key + ":" + sub_key)
-                    all_vals.append(self.fit_instructions[key][sub_key])
+                    sub_val = self.fit_instructions[key][sub_key]
+                    # Handle 3-level nesting (e.g., emission_lines:Ha:loglum)
+                    if isinstance(sub_val, dict):
+                        for sub_sub_key in list(sub_val):
+                            all_keys.append(key + ":" + sub_key + ":" + sub_sub_key)
+                            all_vals.append(sub_val[sub_sub_key])
+                    else:
+                        all_keys.append(key + ":" + sub_key)
+                        all_vals.append(sub_val)
 
         # Sort the resulting lists alphabetically by parameter name.
         indices = np.argsort(all_keys)
@@ -294,12 +301,22 @@ class fitted_model(object):
                 else:
                     self.model_components[split[0]][split[1]] = param[i]
 
+            elif len(split) == 3:
+                # Handle 3-level nesting (e.g., emission_lines:Ha:loglum)
+                self.model_components[split[0]][split[1]][split[2]] = param[i]
+
         # Set any mirror params to the value of the relevant fit param.
         for key in list(self.mirror_pars):
             split_par = key.split(":")
             split_val = self.mirror_pars[key].split(":")
-            fit_val = self.model_components[split_val[0]][split_val[1]]
-            self.model_components[split_par[0]][split_par[1]] = fit_val
+            if len(split_val) == 2:
+                fit_val = self.model_components[split_val[0]][split_val[1]]
+            elif len(split_val) == 3:
+                fit_val = self.model_components[split_val[0]][split_val[1]][split_val[2]]
+            if len(split_par) == 2:
+                self.model_components[split_par[0]][split_par[1]] = fit_val
+            elif len(split_par) == 3:
+                self.model_components[split_par[0]][split_par[1]][split_par[2]] = fit_val
 
         # Deal with any Dirichlet distributed parameters.
         if len(dirichlet_comps) > 0:

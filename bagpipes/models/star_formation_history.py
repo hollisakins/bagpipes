@@ -422,7 +422,7 @@ class star_formation_history:
             'dsfr2': (-3, 3),
             # ... dsfr3 through dsfr7
         }
-        '''
+        """
         bin_edges = np.array(param['bin_edges']) * 1e6
 
         n_bins_specified = len(bin_edges)-1
