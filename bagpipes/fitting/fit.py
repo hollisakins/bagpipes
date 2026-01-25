@@ -30,6 +30,7 @@ except (ImportError, RuntimeError, SystemExit):
 
 try:
     import ultranest
+    import ultranest.stepsampler
     ultranest_available = True
 except (ImportError, RuntimeError, SystemExit):
     print("Bagpipes: UltraNest import failed, fitting with UltraNest will be " +
@@ -299,7 +300,6 @@ class fit(object):
 
                 # Use step sampler for better performance in high dimensions
                 if use_stepsampler:
-                    import ultranest.stepsampler
                     u_sampler.stepsampler = ultranest.stepsampler.SliceSampler(
                         nsteps=max(2 * ndim, 20),
                         generate_direction=ultranest.stepsampler.generate_mixture_random_direction,
