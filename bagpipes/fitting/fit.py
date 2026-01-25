@@ -7,6 +7,7 @@ import time
 import warnings
 import h5py
 import contextlib
+import shutil
 
 from copy import deepcopy
 
@@ -26,6 +27,14 @@ except (ImportError, RuntimeError, SystemExit):
     print("Bagpipes: Nautilus import failed, fitting with Nautilus will be " +
           "unavailable.")
     nautilus_available = False
+
+try:
+    import ultranest
+    ultranest_available = True
+except (ImportError, RuntimeError, SystemExit):
+    print("Bagpipes: UltraNest import failed, fitting with UltraNest will be " +
+          "unavailable.")
+    ultranest_available = False
 
 # detect if run through mpiexec/mpirun
 try:
@@ -155,7 +164,8 @@ class fit(object):
 
     def fit(self, verbose=False, n_live=400, use_MPI=True,
             sampler="multinest", n_eff=0, discard_exploration=False,
-            n_networks=4, pool=1):
+            n_networks=4, pool=1, min_ess=400, resume="resume",
+            use_stepsampler=True):
         """ Fit the specified model to the input galaxy data.
 
         Parameters
@@ -169,8 +179,8 @@ class fit(object):
             lead to unreliable results.
 
         sampler : string - optional
-            The sampler to use. Available options are "multinest" and
-            "nautilus".
+            The sampler to use. Available options are "multinest",
+            "nautilus", and "ultranest".
 
         n_eff : float - optional
             Target minimum effective sample size. Only used by nautilus.
@@ -186,6 +196,17 @@ class fit(object):
             Pool size used for parallelization. Only used by nautilus.
             MultiNest is parallelized with MPI.
 
+        min_ess : int - optional
+            Target minimum effective sample size. Only used by ultranest.
+
+        resume : string - optional
+            Resume behavior for ultranest: 'resume', 'overwrite',
+            'subfolder', or 'resume-similar'. Default is 'resume'.
+
+        use_stepsampler : bool - optional
+            Whether to use a slice step sampler for ultranest. Recommended
+            for high-dimensional problems (>20 parameters). Default is True.
+
         """
         if "lnz" in list(self.results):
             if rank == 0:
@@ -198,20 +219,34 @@ class fit(object):
         # Figure out which sampling algorithm to use
         sampler = sampler.lower()
 
-        if (sampler == "multinest" and not multinest_available and
-                nautilus_available):
-            sampler = "nautilus"
-            print("MultiNest not available. Switching to nautilus.")
+        if sampler == "multinest" and not multinest_available:
+            if nautilus_available:
+                sampler = "nautilus"
+                print("MultiNest not available. Switching to nautilus.")
+            elif ultranest_available:
+                sampler = "ultranest"
+                print("MultiNest not available. Switching to ultranest.")
 
-        elif (sampler == "nautilus" and not nautilus_available and
-                multinest_available):
-            sampler = "multinest"
-            print("Nautilus not available. Switching to MultiNest.")
+        elif sampler == "nautilus" and not nautilus_available:
+            if multinest_available:
+                sampler = "multinest"
+                print("Nautilus not available. Switching to MultiNest.")
+            elif ultranest_available:
+                sampler = "ultranest"
+                print("Nautilus not available. Switching to ultranest.")
 
-        elif sampler not in ["multinest", "nautilus"]:
+        elif sampler == "ultranest" and not ultranest_available:
+            if nautilus_available:
+                sampler = "nautilus"
+                print("UltraNest not available. Switching to nautilus.")
+            elif multinest_available:
+                sampler = "multinest"
+                print("UltraNest not available. Switching to MultiNest.")
+
+        if sampler not in ["multinest", "nautilus", "ultranest"]:
             raise ValueError("Sampler {} not supported.".format(sampler))
 
-        elif not (multinest_available or nautilus_available):
+        if not (multinest_available or nautilus_available or ultranest_available):
             raise RuntimeError("No sampling algorithm could be loaded.")
 
         if rank == 0 or not use_MPI:
@@ -240,6 +275,44 @@ class fit(object):
 
                 n_sampler.run(verbose=verbose, n_eff=n_eff,
                               discard_exploration=discard_exploration)
+
+            elif sampler == "ultranest":
+                # Wrapper functions for UltraNest's expected signatures
+                def ultranest_transform(cube):
+                    params = cube.copy()
+                    self.fitted_model.prior.transform(params, ndim=0, nparam=0)
+                    return params
+
+                def ultranest_lnlike(params):
+                    return self.fitted_model.lnlike(params, ndim=0, nparam=0)
+
+                ultranest_dir = self.fname + "ultranest/"
+                ndim = self.fitted_model.ndim
+
+                u_sampler = ultranest.ReactiveNestedSampler(
+                    self.fitted_model.params,
+                    ultranest_lnlike,
+                    transform=ultranest_transform,
+                    log_dir=ultranest_dir,
+                    resume=resume
+                )
+
+                # Use step sampler for better performance in high dimensions
+                if use_stepsampler:
+                    import ultranest.stepsampler
+                    u_sampler.stepsampler = ultranest.stepsampler.SliceSampler(
+                        nsteps=max(2 * ndim, 20),
+                        generate_direction=ultranest.stepsampler.generate_mixture_random_direction,
+                    )
+
+                # Adjust convergence criteria for high-dimensional problems
+                u_result = u_sampler.run(
+                    min_num_live_points=n_live,
+                    min_ess=min_ess,
+                    dlogz=0.5 + 0.1 * ndim if ndim > 20 else 0.5,
+                    update_interval_volume_fraction=0.4 if ndim > 20 else 0.2,
+                    show_status=verbose
+                )
 
             os.environ["PYTHONWARNINGS"] = ""
 
@@ -283,6 +356,16 @@ class fit(object):
                 self.results["lnz"] = n_sampler.log_z
                 self.results["lnz_err"] = 1.0 / np.sqrt(n_sampler.n_eff)
 
+            elif sampler == "ultranest":
+                samples2d = u_result['samples']
+                # Compute log-likelihoods for posterior samples
+                log_l = np.array([ultranest_lnlike(s) for s in samples2d])
+
+                self.results["samples2d"] = samples2d
+                self.results["lnlike"] = log_l
+                self.results["lnz"] = u_result['logz']
+                self.results["lnz_err"] = u_result['logzerr']
+
             self.results["median"] = np.median(samples2d, axis=0)
             self.results["conf_int"] = np.percentile(self.results["samples2d"],
                                                      (16, 84), axis=0)
@@ -302,6 +385,11 @@ class fit(object):
             file.close()
 
             os.system("rm " + self.fname + "*")
+
+            # Clean up UltraNest directory if it exists
+            ultranest_dir = self.fname + "ultranest/"
+            if os.path.exists(ultranest_dir):
+                shutil.rmtree(ultranest_dir)
 
             self._print_results()
 

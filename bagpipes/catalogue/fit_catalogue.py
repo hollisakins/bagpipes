@@ -132,7 +132,8 @@ class fit_catalogue(object):
             utils.make_dirs(run=run)
 
     def fit(self, verbose=False, n_live=400, mpi_serial=False,
-            track_backlog=False, sampler="multinest", pool=1):
+            track_backlog=False, sampler="multinest", pool=1,
+            min_ess=400, resume="resume", use_stepsampler=True):
         """ Run through the catalogue fitting each object.
 
         Parameters
@@ -155,6 +156,17 @@ class fit_catalogue(object):
             to be added to the catalogue by the "zero" core that
             compiles results from all the others. High numbers mean
             cores are waiting around doing nothing.
+
+        min_ess : int - optional
+            Target minimum effective sample size. Only used by ultranest.
+
+        resume : string - optional
+            Resume behavior for ultranest: 'resume', 'overwrite',
+            'subfolder', or 'resume-similar'. Default is 'resume'.
+
+        use_stepsampler : bool - optional
+            Whether to use a slice step sampler for ultranest. Recommended
+            for high-dimensional problems (>20 parameters). Default is True.
         """
 
         if rank == 0:
@@ -165,7 +177,9 @@ class fit_catalogue(object):
                 self.done = (self.cat.loc[:, "log_evidence"] != 0.).values
 
         if size > 1 and mpi_serial:
-            self._fit_mpi_serial(n_live=n_live, track_backlog=track_backlog)
+            self._fit_mpi_serial(n_live=n_live, track_backlog=track_backlog,
+                                 sampler=sampler, min_ess=min_ess, resume=resume,
+                                 use_stepsampler=use_stepsampler)
             return
 
         for i in range(self.n_objects):
@@ -185,7 +199,8 @@ class fit_catalogue(object):
 
             # If not fit the object and update the output catalogue
             self._fit_object(self.IDs[i], verbose=verbose, n_live=n_live,
-                             sampler=sampler, pool=pool)
+                             sampler=sampler, pool=pool, min_ess=min_ess,
+                             resume=resume, use_stepsampler=use_stepsampler)
 
             self.done[i] = True
 
@@ -199,7 +214,8 @@ class fit_catalogue(object):
                       self.done.shape[0], "objects completed.")
 
     def _fit_mpi_serial(self, verbose=False, n_live=400,
-                        track_backlog=False, sampler="multinest"):
+                        track_backlog=False, sampler="multinest",
+                        min_ess=400, resume="resume", use_stepsampler=True):
         """ Run through the catalogue fitting multiple objects at once
         on different cores. """
 
@@ -234,7 +250,9 @@ class fit_catalogue(object):
 
                 # Load posterior for finished object to update catalogue
                 self._fit_object(oldID, use_MPI=False, verbose=False,
-                                 n_live=n_live, sampler=sampler)
+                                 n_live=n_live, sampler=sampler,
+                                 min_ess=min_ess, resume=resume,
+                                 use_stepsampler=use_stepsampler)
 
                 save_cat = Table.from_pandas(self.cat)
                 save_cat.write("pipes/cats/" + self.run + ".fits",
@@ -264,7 +282,9 @@ class fit_catalogue(object):
 
                 self.n_posterior = 5 # hacky, these don't get used
                 self._fit_object(ID, use_MPI=False, verbose=False,
-                                 n_live=n_live, sampler=sampler)
+                                 n_live=n_live, sampler=sampler,
+                                 min_ess=min_ess, resume=resume,
+                                 use_stepsampler=use_stepsampler)
 
                 comm.send([ID, rank], dest=0)  # Tell 0 object is done
 
@@ -302,7 +322,8 @@ class fit_catalogue(object):
                 self.fit_instructions["redshift"] = self.redshifts[ind]
 
     def _fit_object(self, ID, verbose=False, n_live=400, use_MPI=True,
-                    sampler="multinest", pool=1):
+                    sampler="multinest", pool=1, min_ess=400, resume="resume",
+                    use_stepsampler=True):
         """ Fit the specified object and update the catalogue. """
 
         # Set the correct redshift for this object
@@ -328,7 +349,8 @@ class fit_catalogue(object):
                            n_posterior=self.n_posterior)
 
         self.obj_fit.fit(verbose=verbose, n_live=n_live, use_MPI=use_MPI,
-                         sampler=sampler, pool=pool)
+                         sampler=sampler, pool=pool, min_ess=min_ess,
+                         resume=resume, use_stepsampler=use_stepsampler)
 
         if rank == 0:
             if self.vars is None:
