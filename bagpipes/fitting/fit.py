@@ -301,7 +301,9 @@ class fit(object):
                 # Use step sampler for better performance in high dimensions
                 if use_stepsampler:
                     u_sampler.stepsampler = ultranest.stepsampler.SliceSampler(
-                        nsteps=max(2 * ndim, 20),
+                        nsteps=max(2 * ndim, 100),
+                        adaptive_nsteps='move-distance',  # CRITICAL
+                        max_nsteps=1000,
                         generate_direction=ultranest.stepsampler.generate_mixture_random_direction,
                     )
 
