@@ -188,10 +188,16 @@ class star_formation_history:
         return np.log10(mass_assembly[ind])
 
     def burst(self, sfr, param):
-        """ A delta function burst of star-formation. """
+        """ A delta function burst of star-formation. Accepts `age` (Gyr),
+        `age_frac` (fraction of age_of_universe at the component redshift),
+        or `tform` (formation time in Gyr). See `delayed` for the rationale
+        behind the `age_frac` reparametrization. """
 
         if "age" in list(param):
             age = param["age"]*10**9
+
+        elif "age_frac" in list(param):
+            age = param["age_frac"] * self.age_of_universe
 
         elif "tform" in list(param):
             age = self.age_of_universe - param["tform"]*10**9
@@ -218,9 +224,16 @@ class star_formation_history:
         sfr[mask] += 1.
 
     def exponential(self, sfr, param):
+        """ Exponentially declining SFH. Accepts `age` (Gyr), `age_frac`
+        (fraction of age_of_universe — see `delayed`), or `tstart` (Gyr).
+        Decline timescale is set by either `tau` (Gyr) or `efolds` (number
+        of e-folds across the resolved stellar age). """
 
         if "age" in list(param):
             age = param["age"]*10**9
+
+        elif "age_frac" in list(param):
+            age = param["age_frac"] * self.age_of_universe
 
         else:
             age = (param["tstart"] - self.age_of_universe)*10**9
@@ -229,15 +242,26 @@ class star_formation_history:
             tau = param["tau"]*10**9
 
         elif "efolds" in list(param):
-            tau = (param["age"]/param["efolds"])*10**9
+            # use resolved `age` (not param["age"]) so this branch works
+            # when age was specified via `age_frac` or `tstart`.
+            tau = (age/param["efolds"])
 
         t = age - self.ages[self.ages < age]
 
         sfr[self.ages < age] = np.exp(-t/tau)
 
     def delayed(self, sfr, param):
+        """ Delayed-tau SFH. Accepts either `age` (Gyr) or `age_frac`
+        (stellar age as a fraction of the age of the universe at the
+        component redshift). `age_frac` avoids the implicit redshift-prior
+        bias that a uniform prior on `age` would otherwise impose, since
+        the maximum allowed `age` shrinks at higher z. """
 
-        age = param["age"]*10**9
+        if "age_frac" in list(param):
+            age = param["age_frac"] * self.age_of_universe
+        else:
+            age = param["age"]*10**9
+
         tau = param["tau"]*10**9
 
         t = age - self.ages[self.ages < age]
@@ -245,8 +269,16 @@ class star_formation_history:
         sfr[self.ages < age] = t*np.exp(-t/tau)
 
     def const_exp(self, sfr, param):
+        """ Exponentially declining SFH for ages > `age`, with a constant
+        plateau filling in younger ages back to the present. Accepts
+        either `age` (Gyr) or `age_frac` — see `delayed` for the rationale.
+        Decline timescale set by `tau` (Gyr). """
 
-        age = param["age"]*10**9
+        if "age_frac" in list(param):
+            age = param["age_frac"] * self.age_of_universe
+        else:
+            age = param["age"]*10**9
+
         tau = param["tau"]*10**9
 
         t = age - self.ages[self.ages < age]
@@ -307,11 +339,25 @@ class star_formation_history:
         The weight of mass formed between the two is controlled by a
         fburst factor: thefraction of mass formed in the burst.
         For more detail, see Wild et al. 2020
-        (https://ui.adsabs.harvard.edu/abs/2020MNRAS.494..529W/abstract)
+        (https://ui.adsabs.harvard.edu/abs/2020MNRAS.494..529W/abstract).
+
+        Both stellar-age timescales accept fractional forms as alternatives
+        to the Gyr forms: use `age_frac`/`burstage_frac` (fractions of
+        age_of_universe at the component redshift) in place of
+        `age`/`burstage`. See `delayed` for why this matters for the
+        redshift prior.
         """
-        age = param["age"]*10**9
+        if "age_frac" in list(param):
+            age = param["age_frac"] * self.age_of_universe
+        else:
+            age = param["age"]*10**9
+
+        if "burstage_frac" in list(param):
+            burstage = param["burstage_frac"] * self.age_of_universe
+        else:
+            burstage = param["burstage"]*10**9
+
         tau = param["tau"]*10**9
-        burstage = param["burstage"]*10**9
         alpha = param["alpha"]
         beta = param["beta"]
         fburst = param["fburst"]
