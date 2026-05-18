@@ -50,6 +50,7 @@ class powerlaw_continuum(object):
 
         logL5100 = param["logL5100"]
         beta = param["beta"]
+        balmer_jump = param.get("balmer_jump", 1.0)
 
         # Build power-law spectrum
         spectrum = self.wavelengths ** beta
@@ -64,5 +65,7 @@ class powerlaw_continuum(object):
         Llam5100 = lamLlam5100 / 5100.          # L_lambda in Lsun/A
 
         spectrum *= Llam5100
+
+        spectrum[self.wavelengths > 3646.] *= balmer_jump
 
         self.spectrum = spectrum

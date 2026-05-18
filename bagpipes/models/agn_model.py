@@ -131,6 +131,7 @@ class agn(object):
         logLHaL5100 = param['logLHaL5100']
         T = param['T']
         beta = param['beta']
+        balmer_break = param.get('balmer_break', 1.)
 
         L5100 = np.power(10., logL5100)
         nu = 2.998e9 / self.wavelengths  # in GHz
@@ -153,6 +154,10 @@ class agn(object):
 
         Ha = gauss / np.trapezoid(gauss, x=self.wavelengths) * LHa
         agn_spec += Ha
+
+        # Add Balmer break at 3646A
+        bb_mask = self.wavelengths <= 3645
+        agn_spec[bb_mask] *= balmer_break  # simple factor for break
 
         self.spectrum = agn_spec
 
