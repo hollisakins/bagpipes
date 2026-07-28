@@ -100,7 +100,7 @@ class dust_emission(object):
                              model, left=0., right=0.)
 
         # Normalize spectrum
-        spectrum_norm = spectrum / np.trapz(spectrum, x=self.wavelengths)
+        spectrum_norm = spectrum / np.trapezoid(spectrum, x=self.wavelengths)
         return spectrum_norm
 
     def spectrum_DC22(self, model_comp):
@@ -195,6 +195,6 @@ class dust_emission(object):
             )
 
             # Normalize
-            spectrum = spectrum / np.trapz(spectrum, x=self.wavelengths)
+            spectrum = spectrum / np.trapezoid(spectrum, x=self.wavelengths)
 
         return spectrum * CMB

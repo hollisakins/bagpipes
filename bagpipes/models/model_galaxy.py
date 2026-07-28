@@ -497,8 +497,8 @@ class model_galaxy(object):
                     bc_trans_red = 10**(-bc_Av_reduced*self.dust_atten.A_cont/2.5)
 
                 spectrum_bc_dust = spectrum_bc*bc_trans_red
-                dust_flux += np.trapz(spectrum_bc - spectrum_bc_dust,
-                                      x=self.wavelengths)
+                dust_flux += np.trapezoid(spectrum_bc - spectrum_bc_dust,
+                                          x=self.wavelengths)
 
                 spectrum_bc = spectrum_bc_dust
 
@@ -515,7 +515,8 @@ class model_galaxy(object):
             dust_spectrum = spectrum*trans
             dust_spectrum_bc = spectrum_bc*trans
 
-            dust_flux += np.trapz(spectrum - dust_spectrum, x=self.wavelengths)
+            dust_flux += np.trapezoid(spectrum - dust_spectrum,
+                                      x=self.wavelengths)
 
             # Add scattered light component if specified
             if "logfscat" in list(model_comp["dust_atten"]):
@@ -662,7 +663,7 @@ class model_galaxy(object):
             x_kernel_pix = np.arange(-k_size, k_size+1)
 
             kernel = np.exp(-(x_kernel_pix**2)/(2*sigma_pix**2))
-            kernel /= np.trapz(kernel)  # Explicitly normalise kernel
+            kernel /= np.trapezoid(kernel)  # Explicitly normalise kernel
 
             spectrum = np.convolve(self.spectrum_full, kernel, mode="valid")
             if self.agn:
@@ -690,7 +691,7 @@ class model_galaxy(object):
             x_kernel_pix = np.arange(-k_size, k_size+1)
 
             kernel = np.exp(-(x_kernel_pix**2)/(2*sigma_pix**2))
-            kernel /= np.trapz(kernel)  # Explicitly normalise kernel
+            kernel /= np.trapezoid(kernel)  # Explicitly normalise kernel
 
             # Disperse non-uniformly sampled spectrum
             spectrum = np.convolve(spectrum, kernel, mode="valid")
