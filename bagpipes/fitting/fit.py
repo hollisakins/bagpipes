@@ -347,12 +347,23 @@ class fit(object):
                 self.results["lnz_err"] = float(lnz_line[-1])
 
             elif sampler == "nautilus":
-                samples2d = np.zeros((0, self.fitted_model.ndim))
-                log_l = np.zeros(0)
-                while len(samples2d) < self.n_posterior:
-                    result = n_sampler.posterior(equal_weight=True)
-                    samples2d = np.vstack((samples2d, result[0]))
-                    log_l = np.concatenate((log_l, result[2]))
+                # Transform only the selected equal-weight samples rather than
+                # every point ever sampled: nautilus applies the (slow,
+                # per-point python) prior transform to all points before
+                # thinning, but the weight-based selection is independent of
+                # the transform, so transforming afterwards is equivalent.
+                transform = n_sampler.prior
+                n_sampler.prior = lambda x: x        # identity: stay in cube
+                try:
+                    samples2d = np.zeros((0, self.fitted_model.ndim))
+                    log_l = np.zeros(0)
+                    while len(samples2d) < self.n_posterior:
+                        result = n_sampler.posterior(equal_weight=True)
+                        samples2d = np.vstack((samples2d, result[0]))
+                        log_l = np.concatenate((log_l, result[2]))
+                finally:
+                    n_sampler.prior = transform
+                samples2d = np.array([transform(s) for s in samples2d])
                 self.results["samples2d"] = samples2d
                 self.results["lnlike"] = log_l
                 self.results["lnz"] = n_sampler.log_z
