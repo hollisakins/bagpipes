@@ -171,7 +171,7 @@ class posterior(object):
 
         all_names = ["photometry", "spectrum", "spectrum_agn",
                      "spectrum_full_agn", "spectrum_full", "uvj",
-                     "indices"]
+                     "indices", "spectrum_full_pyneb_nebular"]
 
         all_model_keys = dir(self.model_galaxy)
         quantity_names = [q for q in all_names if q in all_model_keys]

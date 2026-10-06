@@ -23,6 +23,7 @@ from .star_formation_history import star_formation_history
 from .powerlaw_continuum_model import powerlaw_continuum
 from .emission_line_model import emission_lines
 from .pyneb_continuum_model import pyneb_continuum
+from .pyneb_nebular_model import pyneb_nebular
 from ..input.spectral_indices import measure_index
 
 
@@ -213,6 +214,12 @@ class model_galaxy(object):
         if "pyneb_continuum" in list(model_components):
             self.pyneb_continuum = pyneb_continuum(self.wavelengths,
                                                    model_components["pyneb_continuum"])
+
+        # PyNeb nebular continuum + H I lines tied to L(Hbeta); dust-attenuated
+        self.pyneb_nebular = False
+        if "pyneb_nebular" in list(model_components):
+            self.pyneb_nebular = pyneb_nebular(self.wavelengths,
+                                               model_components["pyneb_nebular"])
 
         self.update(model_components)
 
@@ -410,6 +417,9 @@ class model_galaxy(object):
         if self.pyneb_continuum:
             self.pyneb_continuum.update(model_components["pyneb_continuum"])
 
+        if self.pyneb_nebular:
+            self.pyneb_nebular.update(model_components["pyneb_nebular"])
+
         # If the SFH is unphysical do not caclulate the full spectrum
         if self.sfh.unphysical:
             warnings.warn("The requested model includes stars which formed "
@@ -509,9 +519,20 @@ class model_galaxy(object):
         # Add birth cloud spectrum to older stellar spectrum
         spectrum += spectrum_bc
 
+        # PyNeb nebular (continuum + H I lines): same diffuse-ISM screen as the stars
+        # unless "attenuate" is False, in which case it is added after dust below.
+        pyneb_neb_attenuated = False
+        if self.pyneb_nebular:
+            self.spectrum_full_pyneb_nebular = np.copy(self.pyneb_nebular.spectrum)
+            if model_comp["pyneb_nebular"].get("attenuate", True):
+                pyneb_neb_attenuated = True
+                spectrum += self.pyneb_nebular.spectrum
+
         # Add attenuation due to the diffuse ISM.
         if self.dust_atten:
             trans = 10**(-model_comp["dust_atten"]["Av"]*self.dust_atten.A_cont/2.5)
+            if pyneb_neb_attenuated:
+                self.spectrum_full_pyneb_nebular *= trans
             dust_spectrum = spectrum*trans
             dust_spectrum_bc = spectrum_bc*trans
 
@@ -559,8 +580,14 @@ class model_galaxy(object):
         if self.pyneb_continuum:
             spectrum += self.pyneb_continuum.spectrum
 
+        # PyNeb nebular with attenuate=False: add after dust
+        if self.pyneb_nebular and not pyneb_neb_attenuated:
+            spectrum += self.pyneb_nebular.spectrum
+
         # Apply IGM attenuation to everything
         spectrum *= self.igm.trans(model_comp["redshift"])
+        if self.pyneb_nebular:
+            self.spectrum_full_pyneb_nebular *= self.igm.trans(model_comp["redshift"])
         if self.agn:
             self.spectrum_full_agn *= self.igm.trans(model_comp["redshift"])
 
@@ -599,6 +626,11 @@ class model_galaxy(object):
         if self.agn:
             self.spectrum_full_agn /= self.lum_flux*(1. + model_comp['redshift'])
 
+        if self.pyneb_nebular:
+            if "dla" in list(model_comp):
+                self.spectrum_full_pyneb_nebular *= self.dla_trans
+            self.spectrum_full_pyneb_nebular /= self.lum_flux*(1. + model_comp['redshift'])
+
         em_lines /= self.lum_flux
 
         # convert to erg/s/A/cm^2, or erg/s/A if redshift = 0.
@@ -611,6 +643,9 @@ class model_galaxy(object):
 
         if self.agn:
             self.spectrum_full_agn *= 3.826*10**33
+
+        if self.pyneb_nebular:
+            self.spectrum_full_pyneb_nebular *= 3.826*10**33
 
         em_lines *= 3.826*10**33
 
