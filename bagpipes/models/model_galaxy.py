@@ -24,6 +24,7 @@ from .powerlaw_continuum_model import powerlaw_continuum
 from .emission_line_model import emission_lines
 from .pyneb_continuum_model import pyneb_continuum
 from .pyneb_nebular_model import pyneb_nebular
+from .hotstars_model import hotstars
 from ..input.spectral_indices import measure_index
 
 
@@ -220,6 +221,11 @@ class model_galaxy(object):
         if "pyneb_nebular" in list(model_components):
             self.pyneb_nebular = pyneb_nebular(self.wavelengths,
                                                model_components["pyneb_nebular"])
+
+        # hotstars (fork, 2026-10-06): hot ionizing source + its Cloudy nebular emission
+        self.hotstars = False
+        if "hotstars" in list(model_components):
+            self.hotstars = hotstars(self.wavelengths, model_components["hotstars"])
 
         self.update(model_components)
 
@@ -420,6 +426,9 @@ class model_galaxy(object):
         if self.pyneb_nebular:
             self.pyneb_nebular.update(model_components["pyneb_nebular"])
 
+        if self.hotstars:
+            self.hotstars.update(model_components["hotstars"])
+
         # If the SFH is unphysical do not caclulate the full spectrum
         if self.sfh.unphysical:
             warnings.warn("The requested model includes stars which formed "
@@ -528,11 +537,20 @@ class model_galaxy(object):
                 pyneb_neb_attenuated = True
                 spectrum += self.pyneb_nebular.spectrum
 
+        # hotstars: source light + nebular, behind the same diffuse-ISM screen as the stars
+        if self.hotstars:
+            self.spectrum_full_hotstars = np.copy(self.hotstars.spectrum)
+            self.spectrum_full_hotstars_nebular = np.copy(self.hotstars.nebular)
+            spectrum += self.hotstars.spectrum
+
         # Add attenuation due to the diffuse ISM.
         if self.dust_atten:
             trans = 10**(-model_comp["dust_atten"]["Av"]*self.dust_atten.A_cont/2.5)
             if pyneb_neb_attenuated:
                 self.spectrum_full_pyneb_nebular *= trans
+            if self.hotstars:
+                self.spectrum_full_hotstars *= trans
+                self.spectrum_full_hotstars_nebular *= trans
             dust_spectrum = spectrum*trans
             dust_spectrum_bc = spectrum_bc*trans
 
@@ -588,6 +606,9 @@ class model_galaxy(object):
         spectrum *= self.igm.trans(model_comp["redshift"])
         if self.pyneb_nebular:
             self.spectrum_full_pyneb_nebular *= self.igm.trans(model_comp["redshift"])
+        if self.hotstars:
+            self.spectrum_full_hotstars *= self.igm.trans(model_comp["redshift"])
+            self.spectrum_full_hotstars_nebular *= self.igm.trans(model_comp["redshift"])
         if self.agn:
             self.spectrum_full_agn *= self.igm.trans(model_comp["redshift"])
 
@@ -631,6 +652,13 @@ class model_galaxy(object):
                 self.spectrum_full_pyneb_nebular *= self.dla_trans
             self.spectrum_full_pyneb_nebular /= self.lum_flux*(1. + model_comp['redshift'])
 
+        if self.hotstars:
+            for attr in ("spectrum_full_hotstars", "spectrum_full_hotstars_nebular"):
+                arr = getattr(self, attr)
+                if "dla" in list(model_comp):
+                    arr = arr * self.dla_trans
+                setattr(self, attr, arr / (self.lum_flux*(1. + model_comp['redshift'])))
+
         em_lines /= self.lum_flux
 
         # convert to erg/s/A/cm^2, or erg/s/A if redshift = 0.
@@ -646,6 +674,10 @@ class model_galaxy(object):
 
         if self.pyneb_nebular:
             self.spectrum_full_pyneb_nebular *= 3.826*10**33
+
+        if self.hotstars:
+            self.spectrum_full_hotstars *= 3.826*10**33
+            self.spectrum_full_hotstars_nebular *= 3.826*10**33
 
         em_lines *= 3.826*10**33
 
