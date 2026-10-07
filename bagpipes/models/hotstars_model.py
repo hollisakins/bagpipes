@@ -148,7 +148,10 @@ class hotstars(object):
             fwhm = param.get("fwhm", 300.)
             lo, hi = self.wavelengths[0], self.wavelengths[-1]
             for w0, L in zip(self.line_wavs, lums):
-                if L > 0 and lo < w0 < hi:
+                # Lya and anything blueward are absorbed by the IGM/damping wing at the redshifts
+                # this component is built for; bagpipes' own Cloudy nebular loses Lya to the IGM
+                # model (its grid pixel sits at <= 1215.67 A), so skip them here for consistency
+                if L > 0 and lo < w0 < hi and w0 > 1216.:
                     self._add_gaussian(neb, w0, fwhm, L / LSUN)
         self.nebular = neb
         self.source = src
