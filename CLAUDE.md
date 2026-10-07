@@ -92,6 +92,17 @@ Available components for `model_components` dict:
   first build ~75 s, then ~0.1 ms per update. Posterior stores
   `spectrum_full_pyneb_nebular`. Built for the Twin Peaks nebular-continuum test
   (`~/Dropbox/research/projects/zenith/twinpeaks/results/nebular_test_2026-10-04/`).
+- **hotstars:** (fork, 2026-10-06) a hot blackbody ionizing source **plus** the nebular lines
+  and continuum Cloudy predicts for it, from a precomputed grid stored per unit Q(H)
+  (`hotgrid_bb.npz`, axes `T_bb`, `leak` = fraction of He+-ionizing photons retained, `Z_gas`,
+  `logU`, `logn`; built by the twinpeaks `hotgrid/make_hot_grid.py`, Cloudy c25.00, bagpipes
+  recipe with varying `hden`). Parameters `T_bb, leak, logQ, Z_gas, logU, logn` (+ `fwhm`,
+  `fesc`, `source`, `lines`, `grid`; `BAGPIPES_HOTGRID` env sets the default grid path).
+  Multilinear interpolation; adds source light + nebular from one `logQ` behind the
+  diffuse-ISM screen; `Z_gas` / `logU` can be tied to `continuity:metallicity` / `nebular:logU`
+  with string priors. Posterior stores `spectrum_full_hotstars` and
+  `spectrum_full_hotstars_nebular`. ~10 ms per update. Unit test:
+  twinpeaks `results/nebular_test_2026-10-04/hotgrid/test_hotstars_component.py`.
 
 ## Development Commands
 
