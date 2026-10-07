@@ -104,6 +104,17 @@ Available components for `model_components` dict:
   `spectrum_full_hotstars_nebular`. ~10 ms per update. Unit test:
   twinpeaks `results/nebular_test_2026-10-04/hotgrid/test_hotstars_component.py`.
 
+## Gotchas (fitting internals)
+
+- `fitted_model.model_galaxy` is built with `spec_units=phot_units=galaxy.out_units`, i.e. the
+  galaxy's **internal** units (`ergscma` by default), not the units the data were loaded in. Its
+  `spectrum[:, 1]` and `photometry` are f_λ even when you passed `spec_units='mujy'`; convert
+  (f_ν[µJy] = f_λ λ²/c × 10²⁹) before comparing with or adding noise from the input arrays. The
+  posterior `samples['photometry']` is f_λ for the same reason. Bit the Twin Peaks mock generator
+  on 2026-10-06 (mocks came out at zero flux).
+- With `calib`, the likelihood compares the data with `model_galaxy.spectrum / calib.model`
+  (slit = intrinsic / polynomial), so the photometry-anchored frame of the data is data × calib.
+
 ## Development Commands
 
 ```bash
