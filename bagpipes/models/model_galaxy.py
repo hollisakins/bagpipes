@@ -18,6 +18,7 @@ from .dust_attenuation_model import dust_attenuation
 from .nebular_model import nebular
 from .igm_model import igm
 from .dla_model import dla_trans
+from .igm_damping_wing import igm_dw_trans
 from .agn_model import agn
 from .star_formation_history import star_formation_history
 from .powerlaw_continuum_model import powerlaw_continuum
@@ -628,6 +629,15 @@ class model_galaxy(object):
             if self.dust_atten:
                 self.spectrum_bc *= self.dla_trans
 
+        if "igm_dw" in list(model_comp):
+            dw = model_comp["igm_dw"]
+            self.igm_dw_trans = igm_dw_trans(self.wavelengths, model_comp["redshift"], dw["x_HI"],
+                                             z_end=dw["z_end"] if "z_end" in list(dw) else 6.0,
+                                             R_ion=dw["R_ion"] if "R_ion" in list(dw) else 0.0)
+            spectrum *= self.igm_dw_trans
+            if self.dust_atten:
+                self.spectrum_bc *= self.igm_dw_trans
+
         # Convert from luminosity to observed flux at redshift z.
         self.lum_flux = 1.
         if model_comp["redshift"] > 0.:
@@ -650,6 +660,8 @@ class model_galaxy(object):
         if self.pyneb_nebular:
             if "dla" in list(model_comp):
                 self.spectrum_full_pyneb_nebular *= self.dla_trans
+            if "igm_dw" in list(model_comp):
+                self.spectrum_full_pyneb_nebular *= self.igm_dw_trans
             self.spectrum_full_pyneb_nebular /= self.lum_flux*(1. + model_comp['redshift'])
 
         if self.hotstars:

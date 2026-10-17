@@ -188,6 +188,10 @@ class posterior(object):
             size = self.model_galaxy.spectrum_full.shape[0]
             self.samples["dla_transmission"] = np.zeros((self.n_samples, size))
 
+        if "igm_dw" in list(self.fitted_model.model_components):
+            size = self.model_galaxy.spectrum_full.shape[0]
+            self.samples["igm_dw_transmission"] = np.zeros((self.n_samples, size))
+
         if "dust_atten" in list(self.fitted_model.model_components):
             size = self.model_galaxy.spectrum_full.shape[0]
             self.samples["dust_curve"] = np.zeros((self.n_samples, size))
@@ -219,6 +223,9 @@ class posterior(object):
             if "dla" in list(self.fitted_model.model_components):
                 dla_trans = self.fitted_model.model_galaxy.dla_trans
                 self.samples["dla_transmission"][i] = dla_trans
+
+            if "igm_dw" in list(self.fitted_model.model_components):
+                self.samples["igm_dw_transmission"][i] = self.fitted_model.model_galaxy.igm_dw_trans
 
             if "dust_atten" in list(self.fitted_model.model_components):
                 dust_curve = self.fitted_model.model_galaxy.dust_atten.A_cont
