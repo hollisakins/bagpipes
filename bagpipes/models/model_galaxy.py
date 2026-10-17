@@ -669,6 +669,8 @@ class model_galaxy(object):
                 arr = getattr(self, attr)
                 if "dla" in list(model_comp):
                     arr = arr * self.dla_trans
+                if "igm_dw" in list(model_comp):
+                    arr = arr * self.igm_dw_trans
                 setattr(self, attr, arr / (self.lum_flux*(1. + model_comp['redshift'])))
 
         em_lines /= self.lum_flux
