@@ -1,20 +1,48 @@
 **Bayesian Analysis of Galaxies for Physical Inference and Parameter EStimation**
 
-Bagpipes is a state of the art code for generating realistic model galaxy spectra and fitting these to spectroscopic and photometric observations. For further information please see the Bagpipes documentation at `bagpipes.readthedocs.io <http://bagpipes.readthedocs.io>`_.
+This is a personal fork of bagpipes maintained by Hollis Akins, used for fitting JWST data in COSMOS-Web, ZENITH, and EMBER. For the canonical, stable version of the code see the upstream repository at `github.com/ACCarnall/bagpipes <https://github.com/ACCarnall/bagpipes>`_ and the documentation at `bagpipes.readthedocs.io <http://bagpipes.readthedocs.io>`_. Expect this fork to diverge from upstream and to contain breaking changes; if you are not actively collaborating with me, you probably want the upstream version.
 
-**Installation**
+**Notable changes in this fork**
 
-Bagpipes can be installed with pip:
+- BPASS stellar models as the default option (BC03 still supported)
+- Rewritten AGN model with multiple component types (Carnall-style + modified blackbody)
+- Balmer-edge factor in AGN and power-law continuum models
+- New dust attenuation and emission models, with separate stellar/nebular dust components in ``model_galaxy``
+- Custom SFH models, plus an ``age_frac`` reparametrization for age-based SFHs
+- Custom user-defined priors
+- `UltraNest <https://github.com/JohannesBuchner/UltraNest>`_ as an additional nested-sampling backend
+- Simplified ``fesc`` implementation
+- Updated fitting infrastructure for the new model API; new filter curves
+
+See the git log for the full history.
+
+**Installing this fork**
+
+The pip-installable upstream wheel ships the large model grid files, but the GitHub repo does not. The included ``install.sh`` script handles this by downloading the upstream wheel to a temp directory, copying the grids into your cloned repo, and then running an editable install:
 
 .. code::
 
-    pip install bagpipes
+    git clone https://github.com/hollisakins/bagpipes.git
+    cd bagpipes
+    ./install.sh
 
-Please note you cannot run the code just by cloning the repository as the large grids of models aren't included.
+Note that the upstream wheel only ships BC03 (+ DL07) grids. Because this fork defaults to BPASS, you will likely also need the BPASS grid files — these are not redistributed and should be obtained separately and dropped into ``bagpipes/models/grids/``.
+
+**If you already have bagpipes installed**
+
+The script's final step is ``pip install -e .``, which will replace any existing ``bagpipes`` install in the currently active environment. If you want to keep your upstream install intact, create a dedicated environment for the fork before running the script:
+
+.. code::
+
+    conda create -n bagpipes-fork python=3.11
+    conda activate bagpipes-fork
+    ./install.sh
+
+Your original install in the other environment is untouched.
 
 **Sampling algorithms within Bagpipes**
 
-The default sampler (and historically the only option) for fitting models to data is the `MultiNest <https://github.com/JohannesBuchner/MultiNest>`_ code, however this requires separate installation, which can be challenging on some systems. Bagpipes is now also compatible with the pure Python `nautilus <https://github.com/johannesulf/nautilus>`_ nested sampling algorithm, which is now installed by default along with Bagpipes, and will be automatically used for fitting if MultiNest is not installed. Even if you are used to using Bagpipes with Multinest, you may wish to try out Nautlus, as this may yield faster and/or more accurate results in some circumstances. For more information please see the `bagpipes documentation <http://bagpipes.readthedocs.io>`_.
+The default sampler (and historically the only option) for fitting models to data is the `MultiNest <https://github.com/JohannesBuchner/MultiNest>`_ code, however this requires separate installation, which can be challenging on some systems. Bagpipes is also compatible with the pure Python `nautilus <https://github.com/johannesulf/nautilus>`_ nested sampling algorithm, which is installed by default and will be automatically used for fitting if MultiNest is not installed. This fork additionally supports `UltraNest <https://github.com/JohannesBuchner/UltraNest>`_ as a nested-sampling backend (install separately with ``pip install ultranest``). For more information please see the `bagpipes documentation <http://bagpipes.readthedocs.io>`_.
 
 **Published papers and citing the code**
 
