@@ -83,6 +83,13 @@ Available components for `model_components` dict:
 - **nebular:** Cloudy-based emission lines
 - **agn:** MBB or broken power-law AGN models
 - **igm:** Inoue 2014 IGM attenuation
+- **dla:** (fork) proximate absorber, Voigt Lya profile (`logN_HI`, `T`, `b_turb`, optional
+  `redshift`), applied after the Inoue IGM (`models/dla_model.py`)
+- **igm_dw:** (fork, 2026-10-08) Miralda-Escude 1998 IGM damping wing for a neutral fraction
+  `x_HI` (0-1) between `z_end` (default 6) and the source, optionally outside an ionized bubble of
+  proper radius `R_ion` Mpc; zero transmission blueward of Lya at the bubble edge; applied after
+  the Inoue IGM, independent of `dla` (`models/igm_damping_wing.py`). Posterior keeps
+  `igm_dw_transmission` (and `dla_transmission`) on the full model grid.
 - **pyneb_continuum:** (fork) PyNeb nebular continuum, normalised at 5100 A, added *after* dust
 - **pyneb_nebular:** (fork, 2026-10-06) PyNeb nebular continuum **and** H I Balmer/Paschen
   lines from one normalisation `logLHb` at the same `Te`, `ne`; attenuated by the diffuse-ISM
