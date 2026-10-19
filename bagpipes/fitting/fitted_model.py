@@ -127,6 +127,21 @@ class fitted_model(object):
             self.K_phot = -0.5*np.sum(log_error_factors)
             self.inv_sigma_sq_phot = 1./self.galaxy.photometry[:, 2]**2
 
+            # Optional full band-to-band covariance (fork): galaxy.photometry_cov, an (n_bands, n_bands)
+            # array in the galaxy's internal photometry units, set by the caller after constructing the
+            # galaxy. Its diagonal should equal photometry[:, 2]**2; the likelihood becomes a
+            # multivariate Gaussian. Without it, the independent-band likelihood is unchanged.
+            self.inv_cov_phot = None
+            cov = getattr(self.galaxy, "photometry_cov", None)
+            if cov is not None:
+                cov = np.asarray(cov, dtype=float)
+                n = self.galaxy.photometry.shape[0]
+                assert cov.shape == (n, n), "photometry_cov must be (n_bands, n_bands)"
+                sign, logdet = np.linalg.slogdet(cov)
+                assert sign > 0, "photometry_cov is not positive definite"
+                self.inv_cov_phot = np.linalg.inv(cov)
+                self.K_phot = -0.5*(n*np.log(2*np.pi) + logdet)
+
         if self.galaxy.line_labels is not None:
             log_error_factors = np.log(2*np.pi*self.galaxy.line_fluxes[:, 1]**2)
             self.K_lines = -0.5*np.sum(log_error_factors)
@@ -201,6 +216,11 @@ class fitted_model(object):
 
     def _lnlike_phot(self):
         """ Calculates the log-likelihood for photometric data. """
+
+        if self.inv_cov_phot is not None:
+            resid = self.galaxy.photometry[:, 1] - self.model_galaxy.photometry
+            self.chisq_phot = resid @ self.inv_cov_phot @ resid
+            return self.K_phot - 0.5*self.chisq_phot
 
         diff = (self.galaxy.photometry[:, 1] - self.model_galaxy.photometry)**2
         self.chisq_phot = np.sum(diff*self.inv_sigma_sq_phot)
